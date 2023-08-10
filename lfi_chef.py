@@ -7,7 +7,6 @@ from pathlib import Path
 
 def main(config_obj):
     line_buffer = ''
-    path_indexes = []
 
     try:
         # Open the input wordlist in read mode and output wordlist in append mode #
@@ -15,40 +14,29 @@ def main(config_obj):
              config_obj.out_file.open('a', encoding='utf-8') as out_file:
             # Iterate through input wordlist line by line #
             for line in in_file:
+                # Write the original line #
+                out_file.write(line)
+                # Copy original line into buffer #
                 line_buffer += line
-                # Reset char counter #
-                char_count = 0
-                # Iterate through line char by char #
-                for char in line:
-                    # If the mode is Windows and char is backslash path
-                    # or the mode is Linux/Mac and char is slash path #
-                    if (config_obj.mode == 'Windows' and char == '\\') \
-                    or (config_obj.mode != 'Windows' and char == '/'):
-                        # Append current index in line to path indexes for char replacement #
-                        path_indexes.append(char_count)
-
-                    char_count += 1
-
-                # If there were path chars in file path to be parsed #
-                if path_indexes:
+                # If the mode is Windows and char is backslash path
+                # or the mode is Linux/Mac and char is slash path #
+                if (config_obj.mode == 'Windows' and '\\' in line) \
+                or (config_obj.mode != 'Windows' and '/' in line):
                     # Iterate through the path char replace encodings #
                     for slash_parse in config_obj.path_chars:
-                        # Iterate through the tracked indexes where slashes exist #
-                        for index in path_indexes:
-                            # If the wordlist mode is windows #
-                            if config_obj.mode == 'Windows':
-                                # Replace backslash with current parsing character #
-                                line_buffer[index].replace('\\', slash_parse)
-                            # If the wordlist mode is mac or linux #
-                            else:
-                                # Replace slash with current parsing character #
-                                line_buffer[index].replace('/', slash_parse)
+                        # If the wordlist mode is windows #
+                        if config_obj.mode == 'Windows':
+                            # Replace backslash with current parsing character #
+                            line_buffer = line_buffer.replace('\\', slash_parse)
+                        # If the wordlist mode is mac or linux #
+                        else:
+                            # Replace slash with current parsing character #
+                            line_buffer = line_buffer.replace('/', slash_parse)
 
                         # Write new line with parsed path characters #
                         out_file.write(line_buffer)
-
-                    # Reset path indexes list per line #
-                    path_indexes = []
+                        # Reset line buffer to original line #
+                        line_buffer = line
 
                 # Reset line buffer #
                 line_buffer = ''

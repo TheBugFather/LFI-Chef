@@ -2,3 +2,7 @@
 .idea/
 # Python venv
 venv/
+# Text files
+*.txt
+# Log files
+*.log
