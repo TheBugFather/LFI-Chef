@@ -6,3 +6,5 @@ venv/
 *.txt
 # Log files
 *.log
+
+.DS_Store
