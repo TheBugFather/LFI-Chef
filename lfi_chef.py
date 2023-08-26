@@ -9,6 +9,14 @@ def sanitize(config_obj: object):
     pass
 
 
+def null_gen(config_obj: object):
+    pass
+
+
+def traversal_gen(config_obj: object):
+    pass
+
+
 def encoded_gen(config_obj: object, line_buffer: str, line: str, payload_list: list) -> list:
     """
     Generates encoded alternate payloads of original payload passed and populates generated
@@ -21,8 +29,7 @@ def encoded_gen(config_obj: object, line_buffer: str, line: str, payload_list: l
     :return:  The populated payload list.
     """
     # Iterate through the path char replace encodings #
-    for slash_char, period_char, colon_char in zip(config_obj.path_chars,
-                                                   config_obj.period_chars,
+    for slash_char, period_char, colon_char in zip(config_obj.path_chars, config_obj.period_chars,
                                                    config_obj.colon_chars):
         # If the wordlist mode is windows #
         if config_obj.os == 'windows':
@@ -30,12 +37,14 @@ def encoded_gen(config_obj: object, line_buffer: str, line: str, payload_list: l
             line_buffer = line_buffer.replace('\\', slash_char)
             # If there is colon char to parse in current iteration #
             if colon_char:
+                # Replace colon character with current parsing character #
                 line_buffer = line_buffer.replace(':', colon_char)
         # If the wordlist mode is mac or linux #
         else:
             # Replace slash with current parsing character #
             line_buffer = line_buffer.replace('/', slash_char)
 
+        # If there is a period character encoding to parse #
         if period_char:
             # Replace the period encoding for current iteration #
             line_buffer = line_buffer.replace('.', period_char)
@@ -56,10 +65,6 @@ def generate(config_obj: object):
     :param config_obj:  The program configuration instance.
     :return:  Nothing
     """
-    # TODO:  add path traversal mutation feature
-
-    # TODO:  add null byte functionality to append a null byte to beginning and end of payload
-
     payload_list = []
 
     try:
@@ -82,16 +87,19 @@ def generate(config_obj: object):
                         # Generate encoded versions of original path #
                         payload_list = encoded_gen(config_obj, line_buffer, line, payload_list)
 
-                    # If there are path traversaal mutations to generate #
-                    # TODO: iterate over payload list and generate traversal mutations
-
+                    # If there are directory traversal mutations to generate #
+                    if config_obj.traversals:
+                        # Generate traversals based on existing payloads in payload list #
+                        pass
 
                     # If there are null byte mutations to generate #
-                    # TODO: Iterate over payload list and generate null byte mutations
-
+                    if config_obj.null_byte:
+                        pass
 
                     # Iterate through generated payload list and write to output file #
                     [out_file.write(payload) for payload in payload_list]
+                    # Reset the payload list per iteration #
+                    payload_list = []
 
     # If error occurs during file operation #
     except OSError as file_err:
@@ -126,6 +134,7 @@ def int_convert(str_int: str):
     :return:  Converted integer on success, None on failure.
     """
     try:
+        # Convert string integer to raw integer #
         int_res = int(str_int)
 
     # If error occurs converting integer to string #
@@ -160,6 +169,7 @@ class ProgramConfig:
         self.path_chars = []
         self.period_chars = []
         self.colon_chars = []
+        self.traversal_chars = []
         self.traversals = []
         self.null_byte = False
 
@@ -289,11 +299,17 @@ class ProgramConfig:
             end_int = int_convert(end)
 
             # If the start or end number failed to convert #
-            if not start_int or not end_int:
+            if not start_int or not end_int or start_int > end_int:
                 # Print error and exit #
                 print_err('Improper traversal range format detected .. '
                           'proper format is <start_number>:<end_number>')
                 sys.exit(2)
+
+            # Iterate through range and generate traversals
+            for traversal in range(start_int, end_int):
+                pass
+
+        # If a single number range was passed in #
         else:
             # Attempt to convert string integer to integer #
             int_input = int_convert(parsed_input)
@@ -310,7 +326,12 @@ class ProgramConfig:
                           'greater than zero')
                 sys.exit(2)
 
-        # TODO: generate number of various traversal mutations and add to traversals list
+            # Iterate through range and generate traversals #
+            for traversal in range(int_input):
+                pass
+
+    def traversal_payload_gen(self):
+        pass
 
 
 if __name__ == '__main__':
@@ -332,6 +353,9 @@ if __name__ == '__main__':
     arg_parser.add_argument('--traversal', help='Specify the number of recursions to generate '
                                                 'directory traversal payloads or specify specific'
                                                 'ranges like 2:4 generating recursions 2-4')
+    arg_parser.add_argument('--traversal_chars', help='Specify the custom traversal payload chars'
+                                                      'in a comma-separated list like ../,..%2f,'
+                                                      '....//,....%2f%2f')
     arg_parser.add_argument('--null_byte', default=False, type=bool,
                             help='Boolean toggle to generate null byte payloads based on generated '
                                  'encoding & traversal mutations')
@@ -355,6 +379,20 @@ if __name__ == '__main__':
 
     # If directory traversal mutations were specified #
     if parsed_args.traversal:
+        # If a set of custom traversal chars were passed in #
+        if parsed_args.traversal_chars:
+            # Split comma-separated values into list #
+            conf_obj.traversal_chars = parsed_args.traversal_chars.split(',')
+        # If no traversal char set was specified resulting in default char set #
+        else:
+            # TODO: add more default mutations
+            # If the target OS is Windows #
+            if conf_obj.mode == 'windows':
+                conf_obj.traversal_chars = ['..\\', '....\\\\']
+            # If the target OS is Linux #
+            else:
+                conf_obj.traversal_chars = ['../', '..//']
+
         # Validate the directory traversal integer #
         conf_obj.validate_traversal(parsed_args.traversal)
 
@@ -363,11 +401,13 @@ if __name__ == '__main__':
         # Set null byte mutation mode to on #
         conf_obj.null_byte = True
 
-    # If an output file arg was specified #
+    # If an output file was specified #
     if parsed_args.out_file:
+        # Validate the passed in reference to the output file #
         conf_obj.out_file = conf_obj.validate_file(parsed_args.out_file)
-    # Otherwise the default wordlist name with associated os used #
+    # If no output file was specified #
     else:
+        # Use the default output file path #
         conf_obj.out_file = conf_obj.cwd / f'LFI-Chef_{conf_obj.os}_wordlist.txt'
 
     # Setup the log file and logging facilities #
