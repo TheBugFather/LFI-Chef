@@ -6,5 +6,5 @@ venv/
 *.txt
 # Log files
 *.log
-
+# MAC file
 .DS_Store

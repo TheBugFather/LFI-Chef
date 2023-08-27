@@ -1,29 +1,86 @@
 """ Built-in modules """
 import argparse
+import hashlib
 import logging
+import re
 import sys
 from pathlib import Path
 
 
 def sanitize(config_obj: object):
-    # TODO: add sanitize functionality with a way to add/remove drives for Windows
+    """
+    Sanitizes the input wordlist based on the corresponding operating system. Linux and Mac it
+    ensures that external whitespace is stripped and that the slashes are of proper format. Windows
+    features the same but also ensures the payload is lowercase and is able to parse in or remove
+    system drive letters.
+
+    :param config_obj:  The program configuration instance.
+    :return:  Nothing
+    """
+    filter_dict = {}
+
     try:
         # Open the input wordlist in read mode and output wordlist in append mode #
         with config_obj.in_file.open('r', encoding='utf-8') as in_file, \
              config_obj.out_file.open('a', encoding='utf-8') as out_file:
             # Iterate through input wordlist line by line #
             for line in in_file:
-                # If the mode is Windows and char is backslash path
-                # or the mode is Linux/Mac and char is slash path #
-                if (config_obj.os == 'windows' and '\\' in line) \
-                or (config_obj.os != 'windows' and '/' in line):
-                    # If the wordlist OS is Windows #
-                    if config_obj.os == 'windows':
-                        pass
+                # Copy current line to line buffer #
+                line_buffer = line
+                # Strip any outer whitespace #
+                line_buffer = line_buffer.strip()
 
-                    # If the wordlist OS is Linux #
+                # If the wordlist OS is Windows #
+                if config_obj.os == 'windows':
+                    # Lower case all characters (Windows case-insensitive) #
+                    line_buffer = line_buffer.lower()
+
+                    # If the path slashes are using Linux format #
+                    if '/' in line_buffer:
+                        # Replace the slashes with proper Windows format #
+                        line_buffer = line_buffer.replace('/', '\\')
+
+                    # If a drive was specified #
+                    if config_obj.drive_letter:
+                        # If a drive already exists #
+                        if re.search(config_obj.drive_match, line_buffer):
+                            # If the current drive letter differs from the one passed in #
+                            if not line_buffer[:1] == config_obj.drive_letter:
+                                # Reformat the new drive letter on the beginning of path #
+                                line_buffer = f'{config_obj.drive_letter}:{line_buffer[3:]}'
+                        # If no drive exists #
+                        else:
+                            # Parse the drive letter into the beginning of the path #
+                            line_buffer = f'{config_obj.drive_letter}:{line_buffer}'
+
+                    # If no drive letter was specified #
                     else:
-                        pass
+                        # If a drive letter exists #
+                        if re.search(config_obj.drive_match, line_buffer):
+                            # Remove it from the beginning of the path #
+                            line_buffer = line_buffer[3:]
+
+                # If the wordlist OS is Linux #
+                else:
+                    # If the path slashes are using Windows format #
+                    if '\\' in line_buffer:
+                        # Replace the slashes with proper Linux format #
+                        line_buffer = line_buffer.replace('\\', '/')
+
+                # Strip any outer whitespace #
+                line_buffer = line_buffer.strip()
+
+                try:
+                    # Assign sanitized payload of current iteration to hash table by hash index #
+                    filter_dict[hashlib.sha256(line_buffer).hexdigest()] = line_buffer
+
+                # If payload already exists in hash table #
+                except KeyError:
+                    # Ignore writing to output wordlist by re-iterating #
+                    continue
+
+                # Write the sanitized path to output wordlist #
+                out_file.write(line_buffer)
 
     # If error occurs during file operation #
     except OSError as file_err:
@@ -142,34 +199,30 @@ def generate(config_obj: object):
              config_obj.out_file.open('a', encoding='utf-8') as out_file:
             # Iterate through input wordlist line by line #
             for line in in_file:
-                # If the mode is Windows and char is backslash path
-                # or the mode is Linux/Mac and char is slash path #
-                if (config_obj.os == 'windows' and '\\' in line) \
-                or (config_obj.os != 'windows' and '/' in line):
-                    # Copy original line into buffer #
-                    line_buffer = line
-                    # Add original file path payload to list #
-                    payload_list.append(line_buffer)
+                # Copy original line into buffer #
+                line_buffer = line
+                # Add original file path payload to list #
+                payload_list.append(line_buffer)
 
-                    # If there are encoding mutations to generate #
-                    if config_obj.path_chars:
-                        # Generate specified encoded mutations #
-                        payload_list = encoded_gen(config_obj, line_buffer, line, payload_list)
+                # If there are encoding mutations to generate #
+                if config_obj.path_chars:
+                    # Generate specified encoded mutations #
+                    payload_list = encoded_gen(config_obj, line_buffer, line, payload_list)
 
-                    # If there are directory traversal mutations to generate #
-                    if config_obj.traversals:
-                        # Generate path traversal mutations #
-                        payload_list = traversal_gen(config_obj, payload_list)
+                # If there are directory traversal mutations to generate #
+                if config_obj.traversals:
+                    # Generate path traversal mutations #
+                    payload_list = traversal_gen(config_obj, payload_list)
 
-                    # If there are null byte mutations to generate #
-                    if config_obj.null_byte:
-                        # Generate null byte injection mutations #
-                        payload_list = null_gen(payload_list)
+                # If there are null byte mutations to generate #
+                if config_obj.null_byte:
+                    # Generate null byte injection mutations #
+                    payload_list = null_gen(payload_list)
 
-                    # Iterate through generated payload list and write to output file #
-                    [out_file.write(payload) for payload in payload_list]
-                    # Reset the payload list per iteration #
-                    payload_list = []
+                # Iterate through generated payload list and write to output file #
+                [out_file.write(payload) for payload in payload_list]
+                # Reset the payload list per iteration #
+                payload_list = []
 
     # If error occurs during file operation #
     except OSError as file_err:
@@ -223,6 +276,8 @@ class ProgramConfig:
         self.traversal_chars = []
         self.traversals = []
         self.null_byte = False
+        self.drive_letter = None
+        self.drive_match = re.compile('^[A-Za-z]:', re.M)
 
     def validate_file(self, string_path: str, is_required=False) -> Path:
         """
@@ -422,6 +477,24 @@ class ProgramConfig:
         # Iterate through the traversal chars and add the current mutations multiplier to list #
         return [traversals.append(char * traversal_mul) for char in self.traversal_chars]
 
+    def validate_drive(self, drive_letter: str):
+        """
+        Ensures the passed in drive letter is of proper format.
+
+        :param drive_letter:  The drive letter to validate.
+        :return:  Nothing
+        """
+        # If the drive letter is not a single character #
+        if not re.match(r'[A-Za-z]', drive_letter):
+            # Print error and exit #
+            print_err(f'Specified Windows drive letter \"{drive_letter}\" is not of proper format')
+            exit(2)
+
+        # Ensure drive letter is lowercase #
+        drive_letter = drive_letter.lower()
+        # Set the drive letter in config instance #
+        self.drive_letter = drive_letter
+
 
 if __name__ == '__main__':
     RET = 0
@@ -450,6 +523,11 @@ if __name__ == '__main__':
                                  'encoding & traversal mutations')
     arg_parser.add_argument('--out_file', help='The path where the output file is written or '
                                                'name of file if in same directory')
+    arg_parser.add_argument('--drive', help='The Windows drive associated with sanitization mode. '
+                                            'If drive letter specified (Ex: A .. A-Z available), it'
+                                            'will be parsed at the beginning of path unless it '
+                                            'already exists. If not specified it will strip any '
+                                            'drive letters detected')
     parsed_args = arg_parser.parse_args()
 
     # Initialize program configuration class #
@@ -499,6 +577,11 @@ if __name__ == '__main__':
         # Use the default output file path #
         conf_obj.out_file = conf_obj.cwd / f'LFI-Chef_{conf_obj.os}_wordlist.txt'
 
+    # If a specific Windows drive was specified for sanitization #
+    if parsed_args.drive:
+        # Validate that drive letter is proper format #
+        conf_obj.validate_drive(parsed_args.drive)
+
     # Set up the log file and logging facilities #
     logging.basicConfig(filename='LFI-Chef.log',
                         format='%(asctime)s %(lineno)4d@%(filename)-13s[%(levelname)s]>>  '
@@ -514,37 +597,3 @@ if __name__ == '__main__':
         RET = 1
 
     sys.exit(RET)
-
-
-
-
-
-
-"""
-Encoding Techniques
----
-
-Char	URL-encoded			16-bit unicode		Double URL encoding		Overlong UTF-8 encoding
-----	---------------		--------------		-------------------		-----------------------
-/			%2f				%u2215				%252f					%c0%af OR %e0%80%af OR %c0%2f
-
-\			%5c				%u2216				%255c					%c0%5c OR %c0%80%5c
-
-.			N/A 			%u002e				%252e					%c0%2e OR %e0%40%ae OR %c0ae
-
-:
-
-
-Traversal techniques
----
-../
-
-
-Null byte techniques
----
-%00/prepend/null/byte/like/this
-
-OR
-
-/append/null/byte/like/this%00
-"""
