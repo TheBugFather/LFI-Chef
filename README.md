@@ -21,7 +21,7 @@ Char	URL-encoded			16-bit unicode		Double URL encoding		Overlong UTF-8 encoding
 
 \			%5c				%u005c OR %u2216	%255c					%c0%5c OR %c0%80%5c
 
-.			%2e 			%u002e				%252e					%c0%2e OR %e0%40%ae OR %c0ae
+.			%2e 			%u002e				%252e					%c0%2e OR %e0%40%ae OR %c0%ae
 
 \:          %3a             %u003a              %253a                   %c0%3a OR %e0%80%3a 
 

