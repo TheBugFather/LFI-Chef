@@ -2,13 +2,13 @@
 import argparse
 import hashlib
 import logging
-import os
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 
-def windows_sanitize(config_obj: object, line_buffer: str):
+def windows_sanitize(config_obj: object, line_buffer: bytes) -> bytes:
     """
     Sanitizes the current payload in the line buffer to Windows path specifications.
 
@@ -20,9 +20,9 @@ def windows_sanitize(config_obj: object, line_buffer: str):
     line_buffer = line_buffer.lower()
 
     # If the path slashes are using Linux format #
-    if '/' in line_buffer:
+    if b'/' in line_buffer:
         # Replace the slashes with proper Windows format #
-        line_buffer = line_buffer.replace('/', '\\')
+        line_buffer = line_buffer.replace(b'/', b'\\')
 
     # If a drive was specified #
     if config_obj.drive_letter:
@@ -31,11 +31,11 @@ def windows_sanitize(config_obj: object, line_buffer: str):
             # If the current drive letter differs from the one passed in #
             if not line_buffer[:1] == config_obj.drive_letter:
                 # Reformat the new drive letter on the beginning of path #
-                line_buffer = f'{config_obj.drive_letter}:{line_buffer[2:]}'
+                line_buffer = config_obj.drive_letter + b':' + line_buffer[2:]
         # If no drive exists #
         else:
             # Parse the drive letter into the beginning of the path #
-            line_buffer = f'{config_obj.drive_letter}:{line_buffer}'
+            line_buffer = config_obj.drive_letter + b':' + line_buffer
 
     # If no drive letter was specified #
     else:
@@ -61,8 +61,7 @@ def sanitize(config_obj: object):
 
     try:
         # Open the input wordlist in read mode and output wordlist in append mode #
-        with config_obj.in_file.open('r', encoding='utf-8') as in_file, \
-             config_obj.out_file.open('a', encoding='utf-8') as out_file:
+        with config_obj.in_file.open('rb') as in_file, config_obj.out_file.open('wb') as out_file:
             # Iterate through input wordlist line by line #
             for line in in_file:
                 # Copy current line to line buffer #
@@ -77,24 +76,24 @@ def sanitize(config_obj: object):
                 # If the wordlist OS is Linux #
                 else:
                     # If the path slashes are using Windows format #
-                    if '\\' in line_buffer:
+                    if b'\\' in line_buffer:
                         # Replace the slashes with proper Linux format #
-                        line_buffer = line_buffer.replace('\\', '/')
+                        line_buffer = line_buffer.replace(b'\\', b'/')
 
                 # Strip any outer whitespace #
                 line_buffer = line_buffer.strip()
+                # Hash the contents of parse line in buffer as SHA256 #
+                line_hash = hashlib.sha256(line_buffer).hexdigest()
 
-                try:
+                print(f'[+] Payload: {line_buffer.decode(errors="replace"):100s}  '
+                      f'Hash: {line_hash}')
+
+                # If the payload hash is not a key in dict (payload has not been added) #
+                if line_hash not in filter_dict:
                     # Assign sanitized payload of current iteration to hash table by hash index #
-                    filter_dict[hashlib.sha256(line_buffer).hexdigest()] = line_buffer
-
-                # If payload already exists in hash table #
-                except KeyError:
-                    # Ignore writing to output wordlist by re-iterating #
-                    continue
-
-                # Write the sanitized path to output wordlist #
-                out_file.write(line_buffer)
+                    filter_dict[line_hash] = line_buffer
+                    # Write the sanitized path to output wordlist #
+                    out_file.write(line_buffer + b'\n')
 
     # If error occurs during file operation #
     except OSError as file_err:
@@ -117,18 +116,18 @@ def null_gen(payload_list: list) -> list:
     # Iterate through the list of already existing payloads #
     for payload in payload_list:
         # Append null byte on the end of current payload #
-        payload_buffer = f'{payload}%00'
+        payload_buffer = payload + b'%00'
         # Add the payload to the mutations list #
         mutations.append(payload_buffer)
         # Reset line buffer with null byte prepended on the front of the payload #
-        payload_buffer = f'%00{payload}'
+        payload_buffer = b'%00' + payload
         # Add the payload to the mutations list #
         mutations.append(payload_buffer)
 
     return payload_list + mutations
 
 
-def encoded_gen(config_obj: object, line_buffer: str, line: str, payload_list: list) -> list:
+def encoded_gen(config_obj: object, line_buffer: bytes, line: bytes, payload_list: list) -> list:
     """
     Generates encoded payload mutations of the original payload passed and populates generated
     payloads to the payload list.
@@ -147,24 +146,24 @@ def encoded_gen(config_obj: object, line_buffer: str, line: str, payload_list: l
             # If there is a slash char to parse in current iteration #
             if slash_char:
                 # Replace backslash with current parsing character #
-                line_buffer = line_buffer.replace('\\', slash_char)
+                line_buffer = line_buffer.replace(b'\\', slash_char)
 
             # If there is colon char to parse in current iteration #
             if colon_char:
                 # Replace colon character with current parsing character #
-                line_buffer = line_buffer.replace(':', colon_char)
+                line_buffer = line_buffer.replace(b':', colon_char)
 
         # If the wordlist mode is mac or linux #
         else:
             # If there is a slash char to parse in current iteration #
             if slash_char:
                 # Replace slash with current parsing character #
-                line_buffer = line_buffer.replace('/', slash_char)
+                line_buffer = line_buffer.replace(b'/', slash_char)
 
         # If there is a period character encoding to parse #
         if period_char:
             # Replace the period encoding for current iteration #
-            line_buffer = line_buffer.replace('.', period_char)
+            line_buffer = line_buffer.replace(b'.', period_char)
 
         # Add encoding mutation payload to payload list #
         payload_list.append(line_buffer)
@@ -192,20 +191,18 @@ def traversal_gen(config_obj: object, payload_list: list) -> list:
             # Iterate through the list of traversal characters #
             for traversal_set in config_obj.traversal_chars:
                 # Unpack the current iteration traversal set #
-                path_parse, slash_parse = traversal_set.split(':')
+                path_parse, slash_parse = traversal_set.split(b':')
                 # If the OS is Windows #
-                if os.name == 'nt':
+                if config_obj.os == 'windows':
                     # Replace the backslash characters in path with slash parse #
-                    payload_buffer = payload.replace('\\', slash_parse)
+                    payload_buffer = payload.replace(b'\\', slash_parse)
                 # If the OS is Linux or Mac #
                 else:
                     # Replace the slash characters in path with slash parse #
-                    payload_buffer = payload.replace('/', slash_parse)
+                    payload_buffer = payload.replace(b'/', slash_parse)
 
-                # Prepend the traversal to the payload as a buffer #
-                payload_buffer = (path_parse * traversal) + payload_buffer
                 # Append generated payload to mutations list #
-                mutations.append(payload_buffer)
+                mutations.append((path_parse * traversal) + payload_buffer)
 
     return payload_list + mutations
 
@@ -222,24 +219,23 @@ def generate(config_obj: object):
 
     try:
         # Open the input wordlist in read mode and output wordlist in append mode #
-        with config_obj.in_file.open('r', encoding='utf-8') as in_file, \
-             config_obj.out_file.open('a', encoding='utf-8') as out_file:
+        with config_obj.in_file.open('rb') as in_file, config_obj.out_file.open('wb') as out_file:
             # Iterate through input wordlist line by line #
             for line in in_file:
                 # Copy original line into buffer #
-                line_buffer = line
+                line_buffer = line.strip()
                 # Add original file path payload to list #
                 payload_list.append(line_buffer)
 
                 # If there are directory traversal mutations to generate #
-                if config_obj.traversals:
+                if config_obj.traversal_start and config_obj.traversal_end:
                     # Generate path traversal mutations #
                     payload_list = traversal_gen(config_obj, payload_list)
 
                 # If there are encoding mutations to generate #
                 if config_obj.path_chars:
                     # Generate specified encoded mutations #
-                    payload_list = encoded_gen(config_obj, line_buffer, line, payload_list)
+                    payload_list = encoded_gen(config_obj, line_buffer, line.strip(), payload_list)
 
                 # If there are null byte mutations to generate #
                 if config_obj.null_byte:
@@ -247,9 +243,12 @@ def generate(config_obj: object):
                     payload_list = null_gen(payload_list)
 
                 # Iterate through generated payload list and write to output file #
-                [out_file.write(payload) for payload in payload_list]
+                [out_file.write(payload + b'\n') for payload in payload_list]
                 # Reset the payload list per iteration #
                 payload_list = []
+
+                # TODO:  delete after single iteration perfected
+                sys.exit(0)
 
     # If error occurs during file operation #
     except OSError as file_err:
@@ -305,7 +304,7 @@ class ProgramConfig:
         self.traversal_end = None
         self.null_byte = False
         self.drive_letter = None
-        self.drive_match = re.compile('^[A-Za-z]:', re.M)
+        self.drive_match = re.compile(b'^[A-Za-z]:', re.M)
 
     def validate_file(self, string_path: str, is_required=False) -> Path:
         """
@@ -329,10 +328,39 @@ class ProgramConfig:
 
         # If the passed in file path is not absolute #
         if not file_path.is_absolute():
-            # Format that path based on the current path #
-            file_path = self.cwd / string_path
-            # Make sure parent directory and its ancestors are created #
-            file_path.parent.mkdir(parents=True, exist_ok=True)
+            # If the string path starts with a period specifying current directory #
+            if string_path[:1] == '.':
+                # Parse the current working directory as base path and create any dirs in path #
+                file_path = self.path_parse(string_path, self.cwd)
+            # If the string path starts with a tilde specifying the users home directory #
+            elif string_path[:1] == '~':
+                # Parse the current working directory as home path and create any dirs in path #
+                file_path = self.path_parse(string_path, Path.home())
+            # If the input is not of correct format #
+            else:
+                # Print error and exit #
+                print_err(f'Error occurred parsing the file path: {file_path}')
+                sys.exit(2)
+
+        return file_path
+
+    @staticmethod
+    def path_parse(string_path: str, base_path: Path) -> Path:
+        """
+        Takes the input string and base path and trims the first to characters (./, .\\, ~/, etc.).
+        The result is then reformatted to the based in base path and any parent directories in the
+        path are created.
+
+        :param string_path:  The old path to be trimmed and reformatted.
+        :param base_path:  The base path that the string path with be appended to.
+        :return:  The newly formatted pathlib instance.
+        """
+        # Rewrite string without tilde using index slicing #
+        string_parse = string_path[2:]
+        # Format the path based on the users home directory #
+        file_path = base_path / string_parse
+        # Make sure parent directory and its ancestors are created #
+        file_path.parent.mkdir(parents=True, exist_ok=True)
 
         return file_path
 
@@ -426,53 +454,53 @@ class ProgramConfig:
         if url:
             # If the specified os is windows #
             if conf_obj.os == 'windows':
-                self.path_chars.append('%5c')
-                self.colon_chars.append('%3a')
+                self.path_chars.append(b'%5c')
+                self.colon_chars.append(b'%3a')
             # If the specified os is linux/mac #
             else:
-                self.path_chars.append('%2f')
+                self.path_chars.append(b'%2f')
                 self.colon_chars.append(None)
 
-            self.period_chars.append('%2e')
+            self.period_chars.append(b'%2e')
 
         # If double url encoding was specified #
         if double_url:
             # If the specified os is windows #
             if conf_obj.os == 'windows':
-                self.path_chars.append('%255c')
-                self.colon_chars.append('%253a')
+                self.path_chars.append(b'%255c')
+                self.colon_chars.append(b'%253a')
             # If the specified os if linux/mac #
             else:
-                self.path_chars.append('%252f')
+                self.path_chars.append(b'%252f')
                 self.colon_chars.append(None)
 
-            self.period_chars.append('%252e')
+            self.period_chars.append(b'%252e')
 
         # If 16-bit unicode was specified #
         if bit_unicode:
             # If the specified os is windows #
             if conf_obj.os == 'windows':
-                self.path_chars += ['%u005c', '%u2216']
-                self.colon_chars += ['%u003a', '%u003a']
+                self.path_chars += [b'%u005c', b'%u2216']
+                self.colon_chars += [b'%u003a', b'%u003a']
             # If the specified os if linux/mac #
             else:
-                self.path_chars += ['%u002f', '%u2215']
+                self.path_chars += [b'%u002f', b'%u2215']
                 self.colon_chars += [None, None]
 
-            self.period_chars += ['%u002e', '%u002e']
+            self.period_chars += [b'%u002e', b'%u002e']
 
         # If overlong utf-8 encoding was specified #
         if overlong_encoding:
             # If the specified os is windows #
             if conf_obj.os == 'windows':
-                self.path_chars += ['%c0%5c', '%c0%80%5c', '%c0%5c']
-                self.colon_chars += ['%c0%3a', '%e0%80%3a', '%c0%3a']
+                self.path_chars += [b'%c0%5c', b'%c0%80%5c', b'%c0%5c']
+                self.colon_chars += [b'%c0%3a', b'%e0%80%3a', b'%c0%3a']
             # If the specified os if linux/mac #
             else:
-                self.path_chars += ['%c0%af', '%e0%80%af', '%c0%2f']
+                self.path_chars += [b'%c0%af', b'%e0%80%af', b'%c0%2f']
                 self.colon_chars += [None, None, None]
 
-            self.period_chars += ['%c0%2e', '%e0%40%ae', '%c0%ae']
+            self.period_chars += [b'%c0%2e', b'%e0%40%ae', b'%c0%ae']
 
     def validate_drive(self, drive_letter: str):
         """
@@ -487,10 +515,15 @@ class ProgramConfig:
             print_err(f'Specified Windows drive letter \"{drive_letter}\" is not of proper format')
             exit(2)
 
-        # Ensure drive letter is lowercase #
-        drive_letter = drive_letter.lower()
-        # Set the drive letter in config instance #
-        self.drive_letter = drive_letter
+        try:
+            # Set the drive letter in config instance #
+            self.drive_letter = drive_letter.lower().encode()
+
+        # If the input drive letter fails to convert to bytes #
+        except ValueError:
+            # Print error and exit #
+            print_err(f'Error occurred converting input drive letter \"{drive_letter}\" to bytes')
+            exit(2)
 
 
 if __name__ == '__main__':
@@ -549,17 +582,18 @@ if __name__ == '__main__':
         if parsed_args.traversal_chars:
             # Split comma-separated values into list #
             conf_obj.traversal_chars = parsed_args.traversal_chars.split(',')
-            # Filter out any items that do have proper colon delimiter #
-            conf_obj.traversal_chars = [item for item in conf_obj.traversal_chars if ':' in item]
+            # Filter out any items that do have proper colon delimiter while encoding remainders #
+            conf_obj.traversal_chars = [item.encode(errors='replace') for item in
+                                        conf_obj.traversal_chars if ':' in item]
         # If no traversal char set was specified resulting in default char set #
         else:
             # TODO: add more default path traversal mutations
             # If the target OS is Windows #
             if conf_obj.mode == 'windows':
-                conf_obj.traversal_chars = ['..\\:\\', '....\\\\:\\\\']
+                conf_obj.traversal_chars = [b'..\\:\\', b'....\\\\:\\\\']
             # If the target OS is Linux #
             else:
-                conf_obj.traversal_chars = ['../:/', '....//://']
+                conf_obj.traversal_chars = [b'../:/', b'....//://']
 
         # Validate the directory traversal integer #
         conf_obj.validate_traversal(parsed_args.traversal)
@@ -575,8 +609,11 @@ if __name__ == '__main__':
         conf_obj.out_file = conf_obj.validate_file(parsed_args.out_file)
     # If no output file was specified #
     else:
-        # Use the default output file path #
-        conf_obj.out_file = conf_obj.cwd / f'LFI-Chef_{conf_obj.os}_wordlist.txt'
+        # Get the current time #
+        exec_time = datetime.now()
+        # Use the default output file path with current time #
+        conf_obj.out_file = conf_obj.cwd / (f'LFI-Chef_{conf_obj.os}_wordlist_{exec_time.hour}_'
+                                            f'{exec_time.minute}_{exec_time.second}.txt')
 
     # If a specific Windows drive was specified for sanitization #
     if parsed_args.drive:
