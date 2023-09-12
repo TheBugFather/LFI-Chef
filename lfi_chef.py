@@ -270,7 +270,48 @@ def main(config_obj: object):
     :return:  Nothing
     """
     # TODO: add super sweet program banner with some sort of computer spatula
-
+    print(r'''                                                                
+                 @@@       @@@@@@@@  @@@      @@@@@@@  @@@  @@@  @@@@@@@@  @@@@@@@@                   
+                 @@@       @@@@@@@@  @@@     @@@@@@@@  @@@  @@@  @@@@@@@@  @@@@@@@@  
+                 @@!       @@!       @@!     !@@       @@!  @@@  @@!       @@!       
+                 !@!       !@!       !@!     !@!       !@!  @!@  !@!       !@!       
+                 @!!       @!!!:!    !!@     !@!       @!@!@!@!  @!!!:!    @!!!:!    
+                 !!!       !!!!!:    !!!     !!!       !!!@!!!!  !!!!!:    !!!!!:    
+                 !!:       !!:       !!:     :!!       !!:  !!!  !!:       !!:       
+                  :!:      :!:       :!:     :!:       :!:  !:!  :!:       :!:       
+                  :: ::::   ::        ::      ::: :::  ::   :::   :: ::::   ::       
+                 : :: : :   :        :        :: :: :   :   : :  : :: ::    :    
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNKKXMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMNx,. ...c0MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMM0c.      ...,dNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMO,      .dc......oXMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMM0'     .o,..cOo......c0MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMNc    ... 'dOl..:Od......:OMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMO.     .oOo'..ckx,.:kl......:XMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMW.    ,o;..,xkc..'dx;.:x,.....:MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMo     .cxx:..:xd:..cd;.lc....;MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMXo.     .:ddl'.;ol:.;c'.,  .lMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMWO:.     .'col:'.:;,,'   .dMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMWOc.       .,;,...  ...:NMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMW0l.            .....;OWMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMKdc;;:cldk0KKOxl'..'l0WMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWO;...'o0WMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMXl.  .'o0WMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWx'   .,okNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMO;   ..'l0MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMK,   ...,xNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMXd'    .'ckXMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMKl.   ...:d0WMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWx.   ....,dXMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMx.    ...'lKMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMWk,     ..'oWMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMXd,  .x..oMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMW0dlcoXMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+''')
     # If the program mode is wordlist generation #
     if config_obj.mode == 'generate':
         # Call the wordlist generation function #
@@ -534,7 +575,8 @@ if __name__ == '__main__':
                                                 'directory traversal payloads or specify specific'
                                                 'ranges like 2:4 generating recursions 2-4')
     arg_parser.add_argument('--traversal_chars', help='Specify the custom traversal payload chars'
-                                                      'in a comma-separated with a colon delimiter '
+                                                      ' that override default char set in a '
+                                                      'comma-separated with a colon delimiter '
                                                       'between traversal and slash format list like'
                                                       ' ../:/, ....//://, ..\\:\\, etc')
     arg_parser.add_argument('--null_byte', help='Generate null byte payloads based on generated '
@@ -574,10 +616,10 @@ if __name__ == '__main__':
                                         conf_obj.traversal_chars if ':' in item]
         # If no traversal char set was specified resulting in default char set #
         else:
-            # TODO: add more default path traversal mutations
             # If the target OS is Windows #
-            if conf_obj.mode == 'windows':
-                conf_obj.traversal_chars = [b'..\\:\\', b'....\\\\:\\\\']
+            if conf_obj.os == 'windows':
+                conf_obj.traversal_chars = [b'..\\:\\', b'....\\\\:\\\\',
+                                            b'..\\/:\\/', b'....\\/\\/:\\/\\/']
             # If the target OS is Linux #
             else:
                 conf_obj.traversal_chars = [b'../:/', b'....//://']
