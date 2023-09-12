@@ -1,3 +1,4 @@
+# pylint: disable=W0106,C0103
 """ Built-in modules """
 import argparse
 import hashlib
@@ -197,6 +198,11 @@ def traversal_gen(config_obj: object, payload_list: list) -> list:
             for traversal_set in config_obj.traversal_chars:
                 # Unpack the current iteration traversal set #
                 path_parse, slash_parse = traversal_set.split(b':')
+                # If the current payload starts with slash parse character set #
+                if payload.startswith(slash_parse):
+                    # Trim the slash parse character set from beginning of string #
+                    payload = payload.strip(slash_parse)
+
                 # If the OS is Windows #
                 if config_obj.os == 'windows':
                     # Replace the backslash characters in path with slash parse #
@@ -269,8 +275,7 @@ def main(config_obj: object):
     :param config_obj:  The program configuration instance.
     :return:  Nothing
     """
-    # TODO: add super sweet program banner with some sort of computer spatula
-    print(r'''                                                                
+    print(r'''
                  @@@       @@@@@@@@  @@@      @@@@@@@  @@@  @@@  @@@@@@@@  @@@@@@@@                   
                  @@@       @@@@@@@@  @@@     @@@@@@@@  @@@  @@@  @@@@@@@@  @@@@@@@@  
                  @@!       @@!       @@!     !@@       @@!  @@@  @@!       @@!       
@@ -445,7 +450,7 @@ class ProgramConfig:
             # Print error and exit #
             print_err('Improper traversal input value, either below minimum threshold or range '
                       f'start is greater than its end but input \"{start_int}:{end_int}\" detected')
-            exit(2)
+            sys.exit(2)
 
         self.traversal_start = start_int
         self.traversal_end = end_int
@@ -541,7 +546,7 @@ class ProgramConfig:
         if not re.match(r'[A-Za-z]', drive_letter):
             # Print error and exit #
             print_err(f'Specified Windows drive letter \"{drive_letter}\" is not of proper format')
-            exit(2)
+            sys.exit(2)
 
         try:
             # Set the drive letter in config instance #
@@ -551,7 +556,7 @@ class ProgramConfig:
         except ValueError:
             # Print error and exit #
             print_err(f'Error occurred converting input drive letter \"{drive_letter}\" to bytes')
-            exit(2)
+            sys.exit(2)
 
 
 if __name__ == '__main__':
@@ -609,11 +614,9 @@ if __name__ == '__main__':
     if parsed_args.traversal:
         # If a set of custom traversal chars were passed in #
         if parsed_args.traversal_chars:
-            # Split comma-separated values into list #
-            conf_obj.traversal_chars = parsed_args.traversal_chars.split(',')
             # Filter out any items that do have proper colon delimiter while encoding remainders #
             conf_obj.traversal_chars = [item.encode(errors='replace') for item in
-                                        conf_obj.traversal_chars if ':' in item]
+                                        parsed_args.traversal_chars.split(':') if ':' in item]
         # If no traversal char set was specified resulting in default char set #
         else:
             # If the target OS is Windows #
